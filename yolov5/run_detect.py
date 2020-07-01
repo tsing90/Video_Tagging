@@ -119,11 +119,11 @@ def obj_detect(opt):
     if opt.demo:
         vid_writer = cv2.VideoWriter(os.path.splitext(vid_path)[0]+'_obj.mp4', cv2.VideoWriter_fourcc(*opt.fourcc),
                                      dataset.fps, (dataset.width, dataset.height))
-        out_dir = os.path.splitext(vid_path)[0]
+        out_dir = os.path.splitext(vid_path)[0] + '_obj'
         if not os.path.isdir(out_dir):
             os.mkdir(out_dir)
 
-    for path, img, im0s, vid_cap in dataset:
+    for path, img, im0, vid_cap in dataset:
         pbar.n = dataset.frame // scale_fps
         pbar.refresh()
 
@@ -140,15 +140,12 @@ def obj_detect(opt):
         pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)
 
         # Process detections
+        cls_stack = []
+        score_stack = []
         for i, det in enumerate(pred):  # detections per image
-            p, s, im0 = path, '', im0s
-
             if det is not None and len(det):
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
-
-                cls_stack = []
-                score_stack = []
                 # Write results
                 for *xyxy, conf, cls in det:
                     # tracking purpose
@@ -164,16 +161,17 @@ def obj_detect(opt):
                         cls_stack.append(label)
                         score_stack.append(conf)
 
-                # data saving and log purpose
-                all_labels.append(cls_stack)
-                all_score.append(score_stack)
+                    if opt.demo:
+                        label_plot = '%s %.2f' % (names[int(cls)], conf)
+                        plot_one_box(xyxy, im0, label=label_plot, color=colors[int(cls)], line_thickness=3)
 
-                if opt.demo:
-                    label_plot = '%s %.2f' % (names[int(cls)], conf)
-                    plot_one_box(xyxy, im0, label=label_plot, color=colors[int(cls)], line_thickness=3)
-                    cv2.imwrite(os.path.join(out_dir, '{:05d}.jpg'.format(dataset.count // scale_fps)), im0)
-                    # video purpose
-                    vid_writer.write(im0)
+        # log & debug purpose
+        all_labels.append(cls_stack)
+        all_score.append(score_stack)
+        # demo purpose
+        if opt.demo:
+            cv2.imwrite(os.path.join(out_dir, '{:05d}.jpg'.format(dataset.frame // scale_fps)), im0)
+            vid_writer.write(im0)
 
     pbar.close()
     # save video
